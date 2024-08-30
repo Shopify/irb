@@ -101,7 +101,12 @@ module IRB
         return unless method
 
         method_type_flag = method.owner.singleton_class? ? "c" : "i"
-        receiver.name.split("::").join("/") + ".html#method-#{method_type_flag}-#{method.name}"
+
+        if receiver.is_a?(Class)
+          receiver.name.split("::").join("/") + ".html#method-#{method_type_flag}-#{method.name}"
+        else
+          "Kernel.html#method-#{method_type_flag}-#{method.name}"
+        end
       end
     rescue EvaluationError
       nil
