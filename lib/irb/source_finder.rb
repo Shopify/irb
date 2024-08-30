@@ -67,6 +67,46 @@ module IRB
       @irb_context = irb_context
     end
 
+    def resolve_rdoc_path(signature, super_level = 0)
+      case signature
+      when /\A(::)?[A-Z]\w*(::[A-Z]\w*)*\z/ # ConstName, ::ConstName, ConstPath::ConstName
+        eval_receiver_or_owner(signature) # trigger autoload
+        *parts, name = signature.split('::', -1)
+        base =
+          if parts.empty? # ConstName
+            find_const_owner(name)
+          elsif parts == [''] # ::ConstName
+            Object
+          else # ConstPath::ConstName
+            eval_receiver_or_owner(parts.join('::'))
+          end
+
+        if base == Object
+          "#{name}.html"
+        else
+          base.name.split("::").join("/") + "/#{name}.html"
+        end
+      when /\A(?<owner>[A-Z]\w*(::[A-Z]\w*)*)#(?<method>[^ :.]+)\z/ # Class#method
+        owner = eval_receiver_or_owner(Regexp.last_match[:owner])
+        method = Regexp.last_match[:method]
+        return unless owner.respond_to?(:instance_method)
+        method = method_target(owner, super_level, method, "owner")
+        return unless method
+        owner.name.split("::").join("/") + ".html#method-i-#{method.name}"
+      when /\A((?<receiver>.+)(\.|::))?(?<method>[^ :.]+)\z/ # method, receiver.method, receiver::method
+        receiver = eval_receiver_or_owner(Regexp.last_match[:receiver] || 'self')
+        method = Regexp.last_match[:method]
+        return unless receiver.respond_to?(method, true)
+        method = method_target(receiver, super_level, method, "receiver")
+        return unless method
+
+        method_type_flag = method.owner.singleton_class? ? "c" : "i"
+        receiver.name.split("::").join("/") + ".html#method-#{method_type_flag}-#{method.name}"
+      end
+    rescue EvaluationError
+      nil
+    end
+
     def find_source(signature, super_level = 0)
       case signature
       when /\A(::)?[A-Z]\w*(::[A-Z]\w*)*\z/ # ConstName, ::ConstName, ConstPath::ConstName
